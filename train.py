@@ -22,10 +22,10 @@ def compute_score_with_logits(logits, labels):
     return scores
 
 
-def train(model, train_loader, eval_loader, num_epochs, output):
+def train(model, train_loader, eval_loader, num_epochs, output,cycle):
     utils.create_dir(output)
     optim = torch.optim.Adamax(model.parameters())
-    logger = utils.Logger(os.path.join(output, 'log.txt'))
+    logger = utils.Logger(os.path.join(output, 'log_%d.txt'%cycle))#----!!!!
     best_eval_score = 0
 
     for epoch in range(num_epochs):
@@ -64,6 +64,9 @@ def train(model, train_loader, eval_loader, num_epochs, output):
             model_path = os.path.join(output, 'model.pth')
             torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
+            best_model = model#------------!!!!!
+    
+    return best_eval_score#-----!!!!!
 
 
 def evaluate(model, dataloader):
