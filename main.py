@@ -58,7 +58,7 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
           q = Variable(q,volatile=True).cuda()
           a = Variable(a,volatile=True).cuda()
     
-          pred = model(v, b, q, a)
+          pred,_ = model(v, b, q, a)
           prob = torch.nn.functional.softmax(pred,dim=1)
           
           ##entropy baseline

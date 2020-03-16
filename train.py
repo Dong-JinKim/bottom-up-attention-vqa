@@ -39,7 +39,7 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
             q = Variable(q).cuda()
             a = Variable(a).cuda()
 
-            pred = model(v, b, q, a)
+            pred,_ = model(v, b, q, a)
             loss = instance_bce_with_logits(pred, a)
             loss.backward()
             nn.utils.clip_grad_norm(model.parameters(), 0.25)
@@ -78,7 +78,7 @@ def evaluate(model, dataloader):
         v = Variable(v, volatile=True).cuda()
         b = Variable(b, volatile=True).cuda()
         q = Variable(q, volatile=True).cuda()
-        pred = model(v, b, q, None)
+        pred,_ = model(v, b, q, None)
         batch_score = compute_score_with_logits(pred, a.cuda()).sum()
         score += batch_score
         upper_bound += (a.max(1)[0]).sum()
