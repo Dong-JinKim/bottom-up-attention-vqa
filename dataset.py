@@ -114,17 +114,18 @@ class VQAFeatureDataset(Dataset):
         self.img_id2idx = cPickle.load(
             open(os.path.join(dataroot, '%s36_imgid2idx.pkl' % name)))
         print('loading features from h5 file')
-        h5_path = os.path.join(dataroot, '%s36.hdf5' % name)
-        with h5py.File(h5_path, 'r') as hf:
-            self.features = np.array(hf.get('image_features'))
-            self.spatials = np.array(hf.get('spatial_features'))
+        h5_path = os.path.join('', '%s36.hdf5' % name) #os.path.join(dataroot, '%s36.hdf5' % name)#------!!!!!
+        #with h5py.File(h5_path, 'r') as hf:#---------------------!!!!!
+        #    self.features = np.array(hf.get('image_features'))
+        #    self.spatials = np.array(hf.get('spatial_features'))
+        self.im_feat = h5py.File(h5_path, 'r')#-----!!!!!
 
         self.entries = _load_dataset(dataroot, name, self.img_id2idx)
 
         self.tokenize()
         self.tensorize()
-        self.v_dim = self.features.size(2)
-        self.s_dim = self.spatials.size(2)
+        self.v_dim = self.im_feat.get('image_features').shape[2]#self.features.size(2)#-----!!!!!
+        self.s_dim = self.im_feat.get('spatial_features').shape[2]#self.spatials.size(2)#------!!!!!
 
     def tokenize(self, max_length=14):
         """Tokenizes the questions.
@@ -143,8 +144,8 @@ class VQAFeatureDataset(Dataset):
             entry['q_token'] = tokens
 
     def tensorize(self):
-        self.features = torch.from_numpy(self.features)
-        self.spatials = torch.from_numpy(self.spatials)
+        #self.features = torch.from_numpy(self.features)#-----!!!!
+        #self.spatials = torch.from_numpy(self.spatials)#-----!!!!
 
         for entry in self.entries:
             question = torch.from_numpy(np.array(entry['q_token']))
@@ -164,8 +165,10 @@ class VQAFeatureDataset(Dataset):
 
     def __getitem__(self, index):
         entry = self.entries[index]
-        features = self.features[entry['image']]
-        spatials = self.spatials[entry['image']]
+        features = torch.Tensor(self.im_feat.get('image_features')[entry['image']])#self.features[entry['image']]#----!!!!
+        spatials = torch.Tensor(self.im_feat.get('spatial_features')[entry['image']])#self.spatials[entry['image']]#-----!!!!!
+
+        
 
         question = entry['q_token']
         answer = entry['answer']

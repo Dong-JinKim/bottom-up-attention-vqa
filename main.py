@@ -13,6 +13,7 @@ import random #------!!!!!
 from torch.utils.data.sampler import SubsetRandomSampler#----!!!!
 import pdb
 import os
+from torch.autograd import Variable#----!!!!
 
 class SubsetSequentialSampler():
     r"""Samples elements sequentially from a given list of indices, without replacement.
@@ -31,7 +32,9 @@ class SubsetSequentialSampler():
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--epochs_first', type=int, default=20)
+    parser.add_argument('--epochs_active', type=int, default=20)#-----!!!
+    parser.add_argument('--method', type=str, default='random',help='random / entropy / margin / LC')#-----!!!
     parser.add_argument('--num_hid', type=int, default=1024)
     parser.add_argument('--model', type=str, default='baseline0_newatt')
     parser.add_argument('--output', type=str, default='saved_models/exp0')
@@ -40,25 +43,44 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_uncertainty(model, unlabeled_loader,SUBSET):#-------------!!!!!!!
+def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!    
     print("Find samples to label....")
-    #uncertainty = torch.Tensor(range(SUBSET)).cuda()
-    uncertainty = torch.Tensor(SUBSET).cuda()
-    '''
-    models.eval()
-    uncertainty = torch.tensor([]).cuda()
+    ##----random baseline
+    if args.method=='random':
+      uncertainty = torch.Tensor(SUBSET).cuda()
+    else:
+      model.eval()
+      uncertainty = torch.Tensor([]).cuda()
+      #with torch.no_grad():
+      for _, (v, b, q, a) in enumerate(unlabeled_loader):
+          v = Variable(v,volatile=True).cuda()
+          b = Variable(b,volatile=True).cuda()
+          q = Variable(q,volatile=True).cuda()
+          a = Variable(a,volatile=True).cuda()
+    
+          pred = model(v, b, q, a)
+          prob = torch.nn.functional.softmax(pred,dim=1)
+          
+          ##entropy baseline
+          elif args.method=='entropy':
+            
+            logprob = torch.nn.functional.log_softmax(pred,dim=1)
+            entropy = ((-1)*prob*logprob).sum(1)
+            uncertainty = torch.cat((uncertainty, entropy.data),0)
+    
+          ## margin baseline
+          elif args.method=='margin':
+            prob,_ = prob.sort(1,descending=True)
+            uncertainty = torch.cat((uncertainty, (prob[:,0]-prob[:,1]).data),0)
 
-    with torch.no_grad():
-        for (inputs, labels) in unlabeled_loader:
-            inputs = inputs.cuda()
-            # labels = labels.cuda()
-
-            scores, features = models['backbone'](inputs)
-            pred_loss = models['module'](features) # pred_loss = criterion(scores, labels) # ground truth loss
-            pred_loss = pred_loss.view(pred_loss.size(0))
-
-            uncertainty = torch.cat((uncertainty, pred_loss), 0)
-    '''
+          ## least confident baseline
+          elif args.method=='LC':
+            maxprob,_=prob.max(1)
+            uncertainty = torch.cat((uncertainty, maxprob.data),0)
+    
+    else:
+      pdb.set_trace()
+    
     return uncertainty.cpu()
 
 
@@ -72,14 +94,7 @@ if __name__ == '__main__':
     dictionary = Dictionary.load_from_file('data/dictionary.pkl')
     train_dset = VQAFeatureDataset('train', dictionary)
     eval_dset = VQAFeatureDataset('val', dictionary)
-    batch_size = args.batch_size
-
-    constructor = 'build_%s' % args.model
-    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
-    model.w_emb.init_embedding('data/glove6b_init_300d.npy')
-
-    model = nn.DataParallel(model).cuda()
-    
+    batch_size = args.batch_size    
     
     ############################################
     # Initialize a labeled dataset by randomly sampling K=ADDENDUM=1,000 data points from the entire dataset.
@@ -94,42 +109,51 @@ if __name__ == '__main__':
     #############################################
     
     train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
-    #train_loader = DataLoader(train_dset, batch_size, shuffle=True, num_workers=1)
     eval_loader =  DataLoader(eval_dset, batch_size, shuffle=False, num_workers=4)
     
-    #pdb.set_trace()
     
     ######################################### -------- Modified for active learning setup ------- ########################
     logger = utils.Logger(os.path.join(args.output, 'scores.txt'))
         
     for cycle in range(CYCLE): 
       print("##########CYCLE (%d/%d)###########"%(cycle,CYCLE))
-      score = train(model, train_loader, eval_loader, args.epochs, args.output,cycle)
-      logger.write('\teval score [CYCLE %d] : %.2f' % (cycle, 100 * score))
+      
+      if cycle == 0:
+        epochs = args.epochs_first
+      else:
+        epochs = args.epochs_active
+
+      
+      constructor = 'build_%s' % args.model
+      model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
+      model.w_emb.init_embedding('data/glove6b_init_300d.npy')
+      model = nn.DataParallel(model).cuda()
+
+      
+      model.train()
+      score = train(model, train_loader, eval_loader, epochs, args.output,cycle)
+      logger.write('eval score [CYCLE %d] : %.2f' % (cycle, 100 * score))
  
       ##
       #  Update the labeled dataset via loss prediction-based uncertainty measurement
+      if cycle<CYCLE-1:
+        # Randomly sample 10000 unlabeled data points
+        random.shuffle(unlabeled_set)
+        subset = unlabeled_set[:SUBSET]
 
-      # Randomly sample 10000 unlabeled data points
-      random.shuffle(unlabeled_set)
-      subset = unlabeled_set[:SUBSET]
+        # Create unlabeled dataloader for the unlabeled subset
+        unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=4,sampler=SubsetSequentialSampler(subset))
+        
 
-      # Create unlabeled dataloader for the unlabeled subset
-      unlabeled_loader =  DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetSequentialSampler(subset))
-      
+        # Measure uncertainty of each data points in the subset
+        uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),args)
 
-      # Measure uncertainty of each data points in the subset
-      #uncertainty = get_uncertainty(model, unlabeled_loader,SUBSET)
-      uncertainty = get_uncertainty(model, unlabeled_loader,len(subset))
+        # Index in ascending order
+        arg = np.argsort(uncertainty)
+              
+        # Update the labeled dataset and the unlabeled dataset, respectivelypy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
+        unlabeled_set = [dd for dd in list(torch.LongTensor(subset)[arg][:-ADDENDUM].numpy()) + unlabeled_set[SUBSET:]]
 
-      # Index in ascending order
-      arg = np.argsort(uncertainty)
-            
-      # Update the labeled dataset and the unlabeled dataset, respectively
-      #pdb.set_trace()
-      labeled_set += [dd for dd in torch.LongTensor(subset)[arg][-ADDENDUM:].numpy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
-      unlabeled_set = [dd for dd in list(torch.LongTensor(subset)[arg][:-ADDENDUM].numpy()) + unlabeled_set[SUBSET:]]
-
-      # Create a new dataloader for the updated labeled dataset
-      train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
+        # Create a new dataloader for the updated labeled dataset
+        train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
     

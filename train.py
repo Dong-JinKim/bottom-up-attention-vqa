@@ -57,15 +57,16 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
         model.train(True)
 
         logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
-        logger.write('\ttrain_loss: %.2f, score: %.2f' % (total_loss, train_score))
+        #logger.write('\ttrain_loss: %.2f, score: %.2f' % (total_loss, train_score))
         logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
 
         if eval_score > best_eval_score:
             model_path = os.path.join(output, 'model.pth')
             torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
-            best_model = model#------------!!!!!
+            best_params = model.state_dict()#------------!!!!!
     
+    model.load_state_dict(best_params)
     return best_eval_score#-----!!!!!
 
 
