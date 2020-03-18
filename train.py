@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import utils
 from torch.autograd import Variable
-
+import pdb
 
 def instance_bce_with_logits(logits, labels):
     assert logits.dim() == 2
@@ -69,6 +69,105 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
     model.load_state_dict(best_params)
     return best_eval_score#-----!!!!!
 
+
+
+def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epochs, output,cycle):
+    utils.create_dir(output)
+    optim = torch.optim.Adamax(model.parameters())
+    optim_D = torch.optim.Adamax(DD.parameters())#------!!!!
+    logger = utils.Logger(os.path.join(output, 'log_%d.txt'%cycle))
+    best_eval_score = 0
+
+    for epoch in range(num_epochs):
+        total_loss = 0
+        G_loss = 0#------!!!!
+        D_loss = 0#------!!!!
+        train_score = 0
+        t = time.time()
+        
+        for i, (v, b, q, a) in enumerate(train_loader):            
+            v = Variable(v).cuda()
+            b = Variable(b).cuda()
+            q = Variable(q).cuda()
+            a = Variable(a).cuda()
+
+            pred,feat = model(v, b, q, a)#----!!!!
+            
+            v_u, b_u, q_u, a_u = next(iter(unlabeled_loader))#-----!!!!!!
+            v_u = Variable(v_u).cuda()
+            b_u = Variable(b_u).cuda()
+            q_u = Variable(q_u).cuda()
+            a_u = Variable(a_u).cuda()
+            pred_u,feat_u = model(v_u, b_u, q_u, a_u)#----!!!!
+            
+            ############################------------- train D-------------#############################
+            D_input = Variable(torch.cat((feat.data,feat_u.data),0))
+            D_target = Variable(torch.cat( (torch.ones(feat.size(0),1) , torch.zeros(feat_u.size(0),1) ),0)).cuda()
+            GAN_loss_D = instance_bce_with_logits(DD(D_input), D_target)/2#---!!!
+            loss_D =  GAN_loss_D * 0.1
+            
+            loss_D.backward()
+            optim_D.step()
+            optim_D.zero_grad()
+            ############################################################################################
+            
+            
+            loss = instance_bce_with_logits(pred, a)
+            
+            ############################------------- train G-------------#############################
+            train_G=True
+            if train_G:
+              G_input = torch.cat((
+                                feat,
+                                feat_u,
+                                ),0)
+              G_target = Variable(
+                                torch.cat( (
+                                torch.zeros(feat.size(0),1) , 
+                                torch.ones(feat_u.size(0),1) 
+                                ),0)
+                                ).cuda()
+              GAN_loss_G  = instance_bce_with_logits(DD(G_input), G_target)/2
+              loss += GAN_loss_G * 0.1
+            else:
+              GAN_loss_G = Variable(torch.Tensor([-1]))
+            ############################################################################################
+            
+            loss.backward()
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
+            optim.step()
+            optim.zero_grad()
+
+            batch_score = compute_score_with_logits(pred, a.data).sum()
+            total_loss += loss.data[0] * v.size(0)
+            G_loss += GAN_loss_G.data[0] * v.size(0)#------!!!!!
+            D_loss += GAN_loss_D.data[0] * v.size(0)#------!!!!!
+            
+            train_score += batch_score
+            
+
+        total_loss /= len(train_loader.dataset)
+        G_loss /= len(train_loader.dataset)#------!!!!
+        D_loss /= len(train_loader.dataset)#------!!!!
+        train_score = 100 * train_score / len(train_loader.dataset)
+        model.train(False)
+        eval_score, bound = evaluate(model, eval_loader)
+        model.train(True)
+
+        logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
+        logger.write('\tD_loss: %.2f, G_loss: %.2f' % (D_loss, G_loss))
+        logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
+
+        if eval_score > best_eval_score:
+            model_path = os.path.join(output, 'model.pth')
+            torch.save(model.state_dict(), model_path)
+            best_eval_score = eval_score
+            best_params = model.state_dict()
+    
+    model.load_state_dict(best_params)
+    return best_eval_score
+    
+    
 
 def evaluate(model, dataloader):
     score = 0
