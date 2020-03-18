@@ -62,7 +62,7 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
           prob = torch.nn.functional.softmax(pred,dim=1)
           
           ##entropy baseline
-          elif args.method=='entropy':
+          if args.method=='entropy':
             
             logprob = torch.nn.functional.log_softmax(pred,dim=1)
             entropy = ((-1)*prob*logprob).sum(1)
@@ -78,8 +78,8 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
             maxprob,_=prob.max(1)
             uncertainty = torch.cat((uncertainty, maxprob.data),0)
     
-    else:
-      pdb.set_trace()
+          else:
+            pdb.set_trace()
     
     return uncertainty.cpu()
 
@@ -108,6 +108,12 @@ if __name__ == '__main__':
     unlabeled_set = indices[ADDENDUM:]
     #############################################
     
+    
+    constructor = 'build_%s' % args.model
+    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
+    model.w_emb.init_embedding('data/glove6b_init_300d.npy')
+    model = nn.DataParallel(model).cuda()
+  
     train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
     eval_loader =  DataLoader(eval_dset, batch_size, shuffle=False, num_workers=4)
     
@@ -122,13 +128,6 @@ if __name__ == '__main__':
         epochs = args.epochs_first
       else:
         epochs = args.epochs_active
-
-      
-      constructor = 'build_%s' % args.model
-      model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
-      model.w_emb.init_embedding('data/glove6b_init_300d.npy')
-      model = nn.DataParallel(model).cuda()
-
       
       model.train()
       score = train(model, train_loader, eval_loader, epochs, args.output,cycle)
@@ -144,7 +143,6 @@ if __name__ == '__main__':
         # Create unlabeled dataloader for the unlabeled subset
         unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=4,sampler=SubsetSequentialSampler(subset))
         
-
         # Measure uncertainty of each data points in the subset
         uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),args)
 
