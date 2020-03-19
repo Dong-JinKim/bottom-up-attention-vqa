@@ -33,7 +33,7 @@ class SubsetSequentialSampler():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs_first', type=int, default=20)
-    parser.add_argument('--epochs_active', type=int, default=20)#-----!!!
+    parser.add_argument('--epochs_active', type=int, default=10)#-----!!!
     parser.add_argument('--method', type=str, default='random',help='random / entropy / margin / LC')#-----!!!
     parser.add_argument('--num_hid', type=int, default=1024)
     parser.add_argument('--model', type=str, default='baseline0_newatt')
@@ -96,6 +96,11 @@ if __name__ == '__main__':
     eval_dset = VQAFeatureDataset('val', dictionary)
     batch_size = args.batch_size    
     
+    constructor = 'build_%s' % args.model
+    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
+    model.w_emb.init_embedding('data/glove6b_init_300d.npy')
+    model = nn.DataParallel(model).cuda()
+    
     ############################################
     # Initialize a labeled dataset by randomly sampling K=ADDENDUM=1,000 data points from the entire dataset.
     ADDENDUM=40000#3000
@@ -107,12 +112,6 @@ if __name__ == '__main__':
     labeled_set = indices[:ADDENDUM]
     unlabeled_set = indices[ADDENDUM:]
     #############################################
-    
-    
-    constructor = 'build_%s' % args.model
-    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
-    model.w_emb.init_embedding('data/glove6b_init_300d.npy')
-    model = nn.DataParallel(model).cuda()
   
     train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
     eval_loader =  DataLoader(eval_dset, batch_size, shuffle=False, num_workers=4)
@@ -149,7 +148,8 @@ if __name__ == '__main__':
         # Index in ascending order
         arg = np.argsort(uncertainty)
               
-        # Update the labeled dataset and the unlabeled dataset, respectivelypy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
+        # Update the labeled dataset and the unlabeled dataset, respectivelypy()] 
+        labeled_set += [dd for dd in torch.LongTensor(subset)[arg][-ADDENDUM:].numpy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
         unlabeled_set = [dd for dd in list(torch.LongTensor(subset)[arg][:-ADDENDUM].numpy()) + unlabeled_set[SUBSET:]]
 
         # Create a new dataloader for the updated labeled dataset

@@ -64,9 +64,9 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
             model_path = os.path.join(output, 'model.pth')
             torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
-            best_params = model.state_dict()#------------!!!!!
+            #best_params = model.state_dict()#------------!!!!!
     
-    model.load_state_dict(best_params)
+    #model.load_state_dict(best_params)
     return best_eval_score#-----!!!!!
 
 
@@ -85,6 +85,24 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
         train_score = 0
         t = time.time()
         
+        
+        
+        
+        '''
+        batches = zip(train_loader,unlabeled_loader)#------!!!
+        for i, ((v, b, q, a),(v_u, b_u, q_u, a_u)) in enumerate(batches):            
+            v_input = Variable(torch.cat((v,v_u),0)).cuda()
+            b_input = Variable(torch.cat((b,b_u),0)).cuda()
+            q_input = Variable(torch.cat((q,q_u),0)).cuda()
+            a_input = Variable(torch.cat((a,a_u),0)).cuda()
+            a = Variable(a).cuda()
+            
+            pred_total,feat_total = model(v_input, b_input, q_input, a_input)#----!!!!
+            pred = pred_total[:v.size(0)]
+            feat = feat_total[:v.size(0)]
+            feat_u = feat_total[v.size(0):]
+            '''
+            
         for i, (v, b, q, a) in enumerate(train_loader):            
             v = Variable(v).cuda()
             b = Variable(b).cuda()
@@ -98,10 +116,10 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
             b_u = Variable(b_u).cuda()
             q_u = Variable(q_u).cuda()
             a_u = Variable(a_u).cuda()
-            pred_u,feat_u = model(v_u, b_u, q_u, a_u)#----!!!!
+            _,feat_u = model(v_u, b_u, q_u, a_u)#----!!!!
             
             ############################------------- train D-------------#############################
-            D_input = Variable(torch.cat((feat.data,feat_u.data),0))
+            D_input = Variable(torch.cat((feat.data,feat_u.data),0))#Variable(feat_total.data)#
             D_target = Variable(torch.cat( (torch.ones(feat.size(0),1) , torch.zeros(feat_u.size(0),1) ),0)).cuda()
             GAN_loss_D = instance_bce_with_logits(DD(D_input), D_target)/2#---!!!
             loss_D =  GAN_loss_D * 0.1
@@ -118,16 +136,16 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
             train_G=True
             if train_G:
               G_input = torch.cat((
-                                feat,
+                                #feat,
                                 feat_u,
                                 ),0)
               G_target = Variable(
-                                torch.cat( (
-                                torch.zeros(feat.size(0),1) , 
+                                #torch.cat( (
+                                #torch.zeros(feat.size(0),1) , 
                                 torch.ones(feat_u.size(0),1) 
-                                ),0)
+                                #),0)
                                 ).cuda()
-              GAN_loss_G  = instance_bce_with_logits(DD(G_input), G_target)/2
+              GAN_loss_G  = instance_bce_with_logits(DD(G_input), G_target)#/2
               loss += GAN_loss_G * 0.1
             else:
               GAN_loss_G = Variable(torch.Tensor([-1]))
@@ -140,31 +158,31 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
             total_loss += loss.data[0] * v.size(0)
-            G_loss += GAN_loss_G.data[0] * v.size(0)#------!!!!!
-            D_loss += GAN_loss_D.data[0] * v.size(0)#------!!!!!
+            #G_loss += GAN_loss_G.data[0] * v.size(0)#------!!!!!
+            #D_loss += GAN_loss_D.data[0] * v.size(0)#------!!!!!
             
             train_score += batch_score
             
 
         total_loss /= len(train_loader.dataset)
-        G_loss /= len(train_loader.dataset)#------!!!!
-        D_loss /= len(train_loader.dataset)#------!!!!
+        #G_loss /= len(train_loader.dataset)#------!!!!
+        #D_loss /= len(train_loader.dataset)#------!!!!
         train_score = 100 * train_score / len(train_loader.dataset)
         model.train(False)
         eval_score, bound = evaluate(model, eval_loader)
         model.train(True)
 
         logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
-        logger.write('\tD_loss: %.2f, G_loss: %.2f' % (D_loss, G_loss))
+        #logger.write('\tD_loss: %.2f, G_loss: %.2f' % (D_loss, G_loss))
         logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
 
         if eval_score > best_eval_score:
             model_path = os.path.join(output, 'model.pth')
             torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
-            best_params = model.state_dict()
+            #best_params = model.state_dict()
     
-    model.load_state_dict(best_params)
+    #model.load_state_dict(best_params)
     return best_eval_score
     
     

@@ -34,7 +34,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs_first', type=int, default=20)
     parser.add_argument('--epochs_active', type=int, default=10)#-----!!!
-    parser.add_argument('--method', type=str, default='random',help='random / gan')#-----!!!
+    parser.add_argument('--method', type=str, default='gan',help='random / gan')#-----!!!
     parser.add_argument('--num_hid', type=int, default=1024)
     parser.add_argument('--model', type=str, default='baseline0_newatt')
     parser.add_argument('--output', type=str, default='saved_models/exp0')
@@ -115,8 +115,8 @@ if __name__ == '__main__':
     model = nn.DataParallel(model).cuda()
     DD = nn.DataParallel(DD).cuda()#-----!!!!
       
-    train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
-    eval_loader =  DataLoader(eval_dset, batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dset, batch_size, num_workers=2,sampler=SubsetRandomSampler(labeled_set))
+    eval_loader =  DataLoader(eval_dset, batch_size, shuffle=False, num_workers=1)
     
     
     ######################################### -------- Modified for active learning setup ------- ########################
@@ -135,7 +135,8 @@ if __name__ == '__main__':
       subset = unlabeled_set[:SUBSET]#-----!!!!!
 
       # Create unlabeled dataloader for the unlabeled subset
-      unlabeled_loader =  DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(unlabeled_set[:len(labeled_set)]))#-----!!!!! shuffle version (subset? unlabeled_set?)
+      #pdb.set_trace()
+      unlabeled_loader =  DataLoader(train_dset, batch_size, num_workers=1,sampler=SubsetRandomSampler(random.sample(unlabeled_set,len(labeled_set))))#-----!!!!! shuffle version (subset? unlabeled_set?)
         
         
         
@@ -146,12 +147,9 @@ if __name__ == '__main__':
       ##
       #  Update the labeled dataset via loss prediction-based uncertainty measurement
       if cycle<CYCLE-1:
-
-
         # Create unlabeled dataloader for the unlabeled subset
-        unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=4,sampler=SubsetSequentialSampler(subset))# non shuffle version
+        unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=1,sampler=SubsetSequentialSampler(subset))# non shuffle version
         
-
         # Measure uncertainty of each data points in the subset
         uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),args)
 
@@ -159,8 +157,9 @@ if __name__ == '__main__':
         arg = np.argsort(uncertainty)
               
         # Update the labeled dataset and the unlabeled dataset, respectivelypy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
+        labeled_set += [dd for dd in torch.LongTensor(subset)[arg][-ADDENDUM:].numpy()] #list(torch.Tensor(subset)[arg][-ADDENDUM:].numpy())
         unlabeled_set = [dd for dd in list(torch.LongTensor(subset)[arg][:-ADDENDUM].numpy()) + unlabeled_set[SUBSET:]]
 
         # Create a new dataloader for the updated labeled dataset
-        train_loader = DataLoader(train_dset, batch_size, num_workers=4,sampler=SubsetRandomSampler(labeled_set))
+        train_loader = DataLoader(train_dset, batch_size, num_workers=2,sampler=SubsetRandomSampler(labeled_set))
     
