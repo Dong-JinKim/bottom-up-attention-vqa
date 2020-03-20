@@ -136,8 +136,8 @@ if __name__ == '__main__':
 
       # Create unlabeled dataloader for the unlabeled subset
       #pdb.set_trace()
-      unlabeled_loader =  DataLoader(train_dset, batch_size, num_workers=1,sampler=SubsetRandomSampler(random.sample(unlabeled_set,len(labeled_set))))#-----!!!!! shuffle version (subset? unlabeled_set?)
-        
+      unlabeled_loader =  DataLoader(train_dset, batch_size, num_workers=1,
+                            sampler=SubsetRandomSampler(random.sample(unlabeled_set,  min(len(labeled_set),len(unlabeled_set))   )))     
         
         
       model.train()
