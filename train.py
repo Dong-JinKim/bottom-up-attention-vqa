@@ -75,12 +75,31 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
     best_eval_score = 0
     
     USE_self_distillation = True#----------!!!!!!
+    USE_semi_supervised = False#-------!!!!!
 
     for epoch in range(num_epochs):
         total_loss = 0
         train_score = 0
         t = time.time()
-
+        '''
+        batches = zip(train_loader,unlabeled_loader)#------!!! # batch loader for semi-supervised
+        for i, ((v, b, q, a),(v_u, b_u, q_u, a_u)) in enumerate(batches):            
+        v_input = Variable(torch.cat((v,v_u),0)).cuda()
+        b_input = Variable(torch.cat((b,b_u),0)).cuda()
+        q_input = Variable(torch.cat((q,q_u),0)).cuda()
+        a_input = Variable(torch.cat((a,a_u),0)).cuda()
+        a = Variable(a).cuda()
+        
+        pred_total,feat_v_total, feat_q_total = model(v_input, b_input, q_input, a_input)#----!!!!
+        pred_all = pred_total[:v.size(0)]
+        pred_all_u = pred_total[v.size(0):]
+        feat_v = feat_v_total[:v.size(0)]
+        feat_v_u = feat_v_total[v.size(0):]
+        feat_q = feat_q_total[:v.size(0)]
+        feat_q_u = feat_q_total[v.size(0):]
+        '''
+            
+        #-----not semi-supervised
         for i, (v, b, q, a) in enumerate(train_loader):
             v = Variable(v).cuda()
             b = Variable(b).cuda()
@@ -89,19 +108,30 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
             
             pred_all,feat_v,feat_q = model(v, b, q, a)
             
+            
             feat_v = Variable(feat_v.data).cuda()
             feat_q = Variable(feat_q.data).cuda()
             
             pred_v = model.classifier_V(feat_v)
             pred_q = model.classifier_Q(feat_q)
             
+            if USE_semi_supervised:
+              feat_v_u = Variable(feat_v_u.data).cuda()
+              feat_q_u = Variable(feat_q_u.data).cuda()
+              
+              pred_v_u = model.classifier_V(feat_v_u)
+              pred_q_u = model.classifier_Q(feat_q_u)
+            
             loss = instance_bce_with_logits(pred_all, a) + instance_bce_with_logits(pred_v, a) + instance_bce_with_logits(pred_q, a)#----!!!!!
             
             if USE_self_distillation:#----------!!!!!!
               temperature = 1
               teacher = Variable(torch.nn.functional.sigmoid(pred_all.data/temperature)).cuda()
-              
-              loss_distillation = ( instance_bce_with_logits(pred_v/teacher, teacher) + instance_bce_with_logits(pred_q/teacher,teacher) )/2   
+              if USE_semi_supervised:
+                teacher_u = Variable(torch.nn.functional.sigmoid(pred_all_u.data/temperature)).cuda()
+                loss_distillation = ( instance_bce_with_logits(pred_v, teacher) + instance_bce_with_logits(pred_q,teacher) + instance_bce_with_logits(pred_v_u, teacher_u) + instance_bce_with_logits(pred_q_u,teacher_u))/4 
+              else:
+                loss_distillation = ( instance_bce_with_logits(pred_v, teacher) + instance_bce_with_logits(pred_q,teacher) )/2   
               loss += 0.1* loss_distillation
             
             
