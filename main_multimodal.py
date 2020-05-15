@@ -83,30 +83,42 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
             prob_v = torch.nn.functional.softmax(pred_v,dim=1)
             prob_q = torch.nn.functional.softmax(pred_q,dim=1)
             
-            #distance  = KL_div(prob_all,prob_v)#----(1)
-            #distance  = KL_div(prob_all,prob_q)#----(2)
-            #distance1  = (KL_div(prob_v,prob_q) + KL_div(prob_q,prob_v))/2#----(3)
+            #distance1  = KL_div(prob_all,prob_v)#----(1)
+            #distance1  = KL_div(prob_all,prob_q)#----(2)
+            #distance1  = (KL_div(prob_v,prob_q) + KL_div(prob_q,prob_v))/2#----(3_RE)
+            distance1  = (KL_div(prob_v,(prob_q+prob_v)/2) + KL_div(prob_q,(prob_q+prob_v)/2))/2#----(3_REAL)
             #distance  = KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v)   #----(4)
-            #distance2  = KL_div(prob_all,prob_v)-KL_div(prob_all,prob_q)  #----(5)
-            distance  = torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6)
+            #distance  = KL_div(prob_all,prob_v)-KL_div(prob_all,prob_q)  #----(5)
+            #distance  = (-1)*torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6_RE)
             #distance  = KL_div(prob_all,prob_v)*KL_div(prob_all,prob_q)   #----(1*2)
-            #distance2  = KL_div(prob_all,prob_v)+KL_div(prob_all,prob_q)   #----(1+2)
+            #distance  = KL_div(prob_all,prob_v)+KL_div(prob_all,prob_q)   #----(1+2)
+            #distance  = torch.max(KL_div(prob_all,prob_v),KL_div(prob_all,prob_q))   #----(max12)
             
             
-            #distance = distance1+distance2
             
-            #entropy_all = ((-1)*prob_all*torch.nn.functional.log_softmax(pred_all,dim=1)).sum(1)
+            
+            entropy_all = ((-1)*prob_all*torch.nn.functional.log_softmax(pred_all,dim=1)).sum(1)
             
             #entropy_v = ((-1)*prob_v*torch.nn.functional.log_softmax(pred_v,dim=1)).sum(1)
-            #distance = (entropy_all - entropy_v) #----------------------------------------------------(7)
+            #distance1 = (entropy_all - entropy_v) #----------------------------------------------------(7)
             
             #entropy_q = ((-1)*prob_q*torch.nn.functional.log_softmax(pred_q,dim=1)).sum(1)
-            #distance = (entropy_all - entropy_q)*(-1) #----------------------------------------------------(8_RE)
+            #distance1 = (entropy_all - entropy_q)*(-1) #----------------------------------------------------(8_RE)
             
             #distance = torch.abs(entropy_v - entropy_q) #---------(9)
             
             
+            
+            distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
+            
+            
+            
+            distance = distance1+distance2
+            #distance = distance1*distance2
+            #distance = torch.max(distance1,distance2)
+            
             uncertainty = torch.cat((uncertainty, distance.data),0)
+            #pdb.set_trace()
           else:
             pdb.set_trace()
     
@@ -174,7 +186,7 @@ if __name__ == '__main__':
         
         # Measure uncertainty of each data points in the subset
         uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),args)
-
+        
         # Index in ascending order
         arg = np.argsort(uncertainty)
               
