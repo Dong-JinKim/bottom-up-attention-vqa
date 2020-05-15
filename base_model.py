@@ -40,7 +40,10 @@ class MultiModalModel(nn.Module):#------!!!!!
         logits_all = self.classifier_All(joint_repr)#----!!!!
         #logits_v = self.classifier_V(v_repr)#----!!!!
         #logits_q = self.classifier_Q(q_repr)#----!!!!
-        return logits_all,v_repr,q_repr
+        
+        
+        #return logits_all,v_repr,q_repr
+        return logits_all,v.sum(1),q_repr 
         
         
         
@@ -104,7 +107,7 @@ def build_multimodal_newatt(dataset, num_hid):#---------------------------------
     q_net = FCNet([q_emb.num_hid, num_hid])
     v_net = FCNet([dataset.v_dim, num_hid])
     classifier_V = SimpleClassifier(
-        num_hid, num_hid * 2, dataset.num_ans_candidates, 0.5)
+        2048, num_hid * 2, dataset.num_ans_candidates, 0.5)#-------!!!!!
     classifier_Q = SimpleClassifier(
         num_hid, num_hid * 2, dataset.num_ans_candidates, 0.5)
     classifier_All = SimpleClassifier(
