@@ -47,7 +47,7 @@ def parse_args():
 def KL_div(P,Q):
     return (P*(P/Q).log()).sum(1)
 
-def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!    
+def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!!!!!    
     print("Find samples to label....")
     ##----random baseline
     if args.method=='random':
@@ -89,20 +89,18 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
             distance1  = (KL_div(prob_v,(prob_q+prob_v)/2) + KL_div(prob_q,(prob_q+prob_v)/2))/2#----(3_REAL)
             #distance  = KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v)   #----(4)
             #distance  = KL_div(prob_all,prob_v)-KL_div(prob_all,prob_q)  #----(5)
-            #distance  = (-1)*torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6_RE)
+            #distance1  = (-1)*torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6_RE)
             #distance  = KL_div(prob_all,prob_v)*KL_div(prob_all,prob_q)   #----(1*2)
             #distance  = KL_div(prob_all,prob_v)+KL_div(prob_all,prob_q)   #----(1+2)
             #distance  = torch.max(KL_div(prob_all,prob_v),KL_div(prob_all,prob_q))   #----(max12)
             
             
-            
-            
             entropy_all = ((-1)*prob_all*torch.nn.functional.log_softmax(pred_all,dim=1)).sum(1)
             
-            #entropy_v = ((-1)*prob_v*torch.nn.functional.log_softmax(pred_v,dim=1)).sum(1)
+            entropy_v = ((-1)*prob_v*torch.nn.functional.log_softmax(pred_v,dim=1)).sum(1)
             #distance1 = (entropy_all - entropy_v) #----------------------------------------------------(7)
             
-            #entropy_q = ((-1)*prob_q*torch.nn.functional.log_softmax(pred_q,dim=1)).sum(1)
+            entropy_q = ((-1)*prob_q*torch.nn.functional.log_softmax(pred_q,dim=1)).sum(1)
             #distance1 = (entropy_all - entropy_q)*(-1) #----------------------------------------------------(8_RE)
             
             #distance = torch.abs(entropy_v - entropy_q) #---------(9)
@@ -113,9 +111,25 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,args):#-------------!!!!!!!
             
             
             
+            #distance1 = entropy_v#------- entropy of V
+            #distance1 = entropy_q#------- entropy of Q
+            
+            
+            
+            
+            
+            #distance = entropy_all
             distance = distance1+distance2
+            #distance = distance1+distance2+entropy_all * 10
             #distance = distance1*distance2
+            #distance = distance1*distance2*entropy_all
             #distance = torch.max(distance1,distance2)
+            
+            
+            
+            distance = (10-cycle) * entropy_v + cycle * distance  # Linear scheduling from multimodalV to other distance.
+            
+            
             
             uncertainty = torch.cat((uncertainty, distance.data),0)
             #pdb.set_trace()
@@ -185,7 +199,7 @@ if __name__ == '__main__':
         unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=1,sampler=SubsetSequentialSampler(subset))
         
         # Measure uncertainty of each data points in the subset
-        uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),args)
+        uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),cycle,args)
         
         # Index in ascending order
         arg = np.argsort(uncertainty)

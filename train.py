@@ -29,30 +29,23 @@ def triplet_loss(teacher,student,target,margin=0):
       loss_s = student - student * target + max_val_s + ((-max_val_s).exp() + (-student - max_val_s).exp()).log()
       
       
-      
-      
-      
-      #loss = max(loss_s-loss_t+margin,0)
-      
-      
       GT = Variable(torch.ones(teacher.size(0),1).cuda())
       
-      loss_s2 = Variable(loss_s.data)
-      loss = nn.functional.margin_ranking_loss(loss_t,loss_s2,GT,margin=margin)
+      
+      ## for triplet_! -------------------------------(1)
+      loss = nn.functional.margin_ranking_loss(loss_t,loss_s,GT,margin=margin)
+      
+      ## for triplet_RE ------------------------------(2)
+      #loss_s2 = Variable(loss_s.data)
+      #loss = nn.functional.margin_ranking_loss(loss_t,loss_s2,GT,margin=margin)
     
     
     if CONTRASTIVE:    ## for contrasive loss
-      #pdb.set_trace()
       student2 = Variable(student.data)
-      #pdb.set_trace()
-      GG = torch.nn.functional.logsigmoid(teacher)-torch.nn.functional.logsigmoid(student2)
-      
+      GG = torch.nn.functional.sigmoid(teacher)-torch.nn.functional.sigmoid(student2) # sigmoid(.) somhow works better than logsoftmax(.)
       
       loss = instance_bce_with_logits(GG, target)
       
-    
-    
-    
     return loss
 
 def compute_score_with_logits(logits, labels):
@@ -109,13 +102,160 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
     model.load_state_dict(best_params)
     return best_eval_score#-----!!!!!
 
+
+'''
+def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loader, num_epochs, output,cycle):
+    utils.create_dir(output)
+    optim = torch.optim.Adamax(model.parameters())
+    optim_D = torch.optim.Adamax(list(classifier_V.parameters())+list(classifier_Q.parameters()))#-------!!!!!!
+    logger = utils.Logger(os.path.join(output, 'log_%d.txt'%cycle))
+    best_eval_score = 0
+    
+    USE_semi_supervised = False#-------!!!!!
+    USE_triplet = True#-----!!!!
+
+    for epoch in range(num_epochs):
+        total_loss = 0
+        train_score = 0
+        t = time.time()
+        ''
+        batches = zip(train_loader,unlabeled_loader)#------!!! # batch loader for semi-supervised
+        for i, ((v, b, q, a),(v_u, b_u, q_u, a_u)) in enumerate(batches):            
+        v_input = Variable(torch.cat((v,v_u),0)).cuda()
+        b_input = Variable(torch.cat((b,b_u),0)).cuda()
+        q_input = Variable(torch.cat((q,q_u),0)).cuda()
+        a_input = Variable(torch.cat((a,a_u),0)).cuda()
+        a = Variable(a).cuda()
+        
+        pred_total,feat_v_total, feat_q_total = model(v_input, b_input, q_input, a_input)#----!!!!
+        pred_all = pred_total[:v.size(0)]
+        pred_all_u = pred_total[v.size(0):]
+        feat_v = feat_v_total[:v.size(0)]
+        feat_v_u = feat_v_total[v.size(0):]
+        feat_q = feat_q_total[:v.size(0)]
+        feat_q_u = feat_q_total[v.size(0):]
+        ''
+            
+        #-----not semi-supervised
+        for i, (v, b, q, a) in enumerate(train_loader):
+            v = Variable(v).cuda()
+            b = Variable(b).cuda()
+            q = Variable(q).cuda()
+            a = Variable(a).cuda()
+            
+            pred_all,feat_v,feat_q = model(v, b, q, a)
+            
+            
+            feat_v_D = Variable(feat_v.data).cuda()
+            feat_q_D = Variable(feat_q.data).cuda()
+            pred_v = classifier_V(feat_v_D)
+            pred_q = classifier_Q(feat_q_D)
+            
+            
+            if USE_semi_supervised:
+              feat_v_uD = Variable(feat_v_u.data).cuda()
+              feat_q_uD = Variable(feat_q_u.data).cuda()
+              
+              pred_v_u = classifier_V(feat_v_uD)
+              pred_q_u = classifier_Q(feat_q_uD)
+            
+            ###########################---------------------------DD--------------------------------------#####################################
+            loss_D = instance_bce_with_logits(pred_v, a) + instance_bce_with_logits(pred_q, a)#----!!!!!
+            
+            #loss = instance_bce_with_logits(pred_all, a) + instance_bce_with_logits(pred_v, a) #----- V only
+            #loss = instance_bce_with_logits(pred_all, a) + instance_bce_with_logits(pred_q, a)#------- Q only
+            
+            
+            
+            temperature_t = 1
+            temperature_s = 1
+            teacher = Variable(torch.nn.functional.sigmoid(pred_all.data/temperature_t)).cuda()
+            if USE_semi_supervised:
+              teacher_u = Variable(torch.nn.functional.sigmoid(pred_all_u.data/temperature_t)).cuda()
+              loss_distillation = ( instance_bce_with_logits(pred_v/temperature_s, teacher) + instance_bce_with_logits(pred_q/temperature_s,teacher) + instance_bce_with_logits(pred_v_u/temperature_s, teacher_u) + instance_bce_with_logits(pred_q_u/temperature_s,teacher_u))/4 
+            else:
+              #loss_distillation = ( instance_bce_with_logits(pred_v/teacher, teacher) + instance_bce_with_logits(pred_q/teacher,teacher) )/2   
+              loss_distillation = (instance_bce_with_logits(pred_v/temperature_s, teacher) + instance_bce_with_logits(pred_q/temperature_s,teacher))/2   
+              #loss_distillation = instance_bce_with_logits(pred_v/temperature_s, teacher) #-----V only
+              #loss_distillation = instance_bce_with_logits(pred_q/temperature_s,teacher) #-----Q only
+            #pdb.set_trace()
+              
+            loss_D += 0.1* loss_distillation
+              
+            loss_D.backward()
+            ##nn.utils.clip_grad_norm(DD.parameters(), 0.25)
+            optim_D.step()
+            optim_D.zero_grad()
+            ###################################################################################################################################
+            
+            
+            
+            
+            
+            
+            
+            
+            ###########################---------------------------GG--------------------------------------#####################################
+            
+            
+            
+            
+            loss = instance_bce_with_logits(pred_all, a)#----!!!!!
+            
+            
+            
+              
+              
+            if USE_triplet:
+              loss_triplet = (triplet_loss(pred_all,pred_v,a,margin=0) + triplet_loss(pred_all,pred_q,a,margin=0))/2
+              loss += 0.1* loss_triplet
+                
+                
+                
+              
+            
+            #pdb.set_trace()
+            loss.backward()
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
+            optim.step()
+            optim.zero_grad()
+            ###################################################################################################################################
+            
+            
+            batch_score = compute_score_with_logits(pred_all, a.data).sum()
+            total_loss += loss.data[0] * v.size(0)
+            train_score += batch_score
+
+        total_loss /= len(train_loader.dataset)
+        train_score = 100 * train_score / len(train_loader.dataset)
+        model.train(False)
+        eval_score, bound = evaluate(model, eval_loader)
+        model.train(True)
+
+        logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
+        logger.write('\ttrain_loss: %.2f, loss_D: %.2f, distillation loss: %.2f' % (total_loss,loss_D,loss_distillation))
+        logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
+
+        if eval_score > best_eval_score:
+            model_path = os.path.join(output, 'model.pth')
+            torch.save(model.state_dict(), model_path)
+            best_eval_score = eval_score
+            #best_params = model.state_dict()#------------!!!!!
+    
+    #model.load_state_dict(best_params)
+    return best_eval_score#-----!!!!!
+'''    
+    
+    
+
+
 def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle):
     utils.create_dir(output)
     optim = torch.optim.Adamax(model.parameters())
     logger = utils.Logger(os.path.join(output, 'log_%d.txt'%cycle))#----!!!!
     best_eval_score = 0
     
-    USE_self_distillation = True#----------!!!!!!
+    USE_self_distillation = True#----------!!!!!! fz
     USE_semi_supervised = False#-------!!!!!
     USE_triplet = False#-----!!!!
 
@@ -208,11 +348,16 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
         model.train(True)
 
         logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
-        logger.write('\ttrain_loss: %.2f, triplet loss: %.2f' % (total_loss, loss_triplet))
+        if USE_triplet:
+          logger.write('\ttrain_loss: %.2f, triplet loss: %.2f' % (total_loss, loss_triplet))
+        elif USE_self_distillation:
+          logger.write('\ttrain_loss: %.2f, distillation loss: %.2f' % (total_loss, loss_distillation))
+        #else:
+        #  logger.write('\ttrain_loss: %.2f' % (total_loss))
         logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
 
         if eval_score > best_eval_score:
-            model_path = os.path.join(output, 'model.pth')
+            model_path = os.path.join(output, 'model-%d.pth'%cycle)
             torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
             #best_params = model.state_dict()#------------!!!!!
