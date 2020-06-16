@@ -107,11 +107,11 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
             
             
             
-            distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
+            #distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
             
             
             
-            #distance1 = entropy_v#------- entropy of V
+            distance2 = entropy_v#------- entropy of V
             #distance1 = entropy_q#------- entropy of Q
             
             
@@ -119,8 +119,8 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
             
             
             #distance = entropy_all
-            distance = distance1+distance2
-            #distance = distance1+distance2+entropy_all * 10
+            #distance = distance1+distance2
+            distance = distance1+distance2+entropy_all * 10
             #distance = distance1*distance2
             #distance = distance1*distance2*entropy_all
             #distance = torch.max(distance1,distance2)
