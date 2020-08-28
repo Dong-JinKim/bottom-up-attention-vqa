@@ -80,7 +80,7 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
-            total_loss += loss.data[0] * v.size(0)
+            total_loss += loss.item() * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -223,7 +223,7 @@ def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loade
             
             
             batch_score = compute_score_with_logits(pred_all, a.data).sum()
-            total_loss += loss.data[0] * v.size(0)
+            total_loss += loss.item() * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -320,17 +320,14 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
                 loss_distillation = (instance_bce_with_logits(pred_v/temperature_s, teacher) + instance_bce_with_logits(pred_q/temperature_s,teacher))/2   
                 #loss_distillation = instance_bce_with_logits(pred_v/temperature_s, teacher) #-----V only
                 #loss_distillation = instance_bce_with_logits(pred_q/temperature_s,teacher) #-----Q only
-              
-              
-              if USE_triplet:
-                loss_triplet = (triplet_loss(pred_all,pred_v,a,margin=0) + triplet_loss(pred_all,pred_q,a,margin=0))/2
-                loss += 0.1* loss_triplet
-                
-                
-                
+
               #pdb.set_trace()
               loss += 0.1* loss_distillation
             
+            if USE_triplet:
+              loss_triplet = (triplet_loss(pred_all,pred_v,a,margin=0) + triplet_loss(pred_all,pred_q,a,margin=0))/2
+              loss += 0.1* loss_triplet
+              
             #pdb.set_trace()
             loss.backward()
             nn.utils.clip_grad_norm(model.parameters(), 0.25)
@@ -338,7 +335,7 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred_all, a.data).sum()
-            total_loss += loss.data[0] * v.size(0)
+            total_loss += loss.item() * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -358,7 +355,7 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
 
         if eval_score > best_eval_score:
             model_path = os.path.join(output, 'model.pth')
-            torch.save(model.state_dict(), model_path)
+            #torch.save(model.state_dict(), model_path)
             best_eval_score = eval_score
             #best_params = model.state_dict()#------------!!!!!
     
@@ -451,9 +448,9 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
-            total_loss += loss.data[0] * v.size(0)
-            G_loss += GAN_loss_G.data[0] * v.size(0)#------!!!!!
-            D_loss += GAN_loss_D.data[0] * v.size(0)#------!!!!!
+            total_loss += loss.item() * v.size(0)
+            G_loss += GAN_loss_G.item() * v.size(0)#------!!!!!
+            D_loss += GAN_loss_D.item() * v.size(0)#------!!!!!
             
             train_score += batch_score
             
