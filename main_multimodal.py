@@ -55,88 +55,88 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
     else:
       model.eval()
       uncertainty = torch.Tensor([]).cuda()
-      #with torch.no_grad():
-      for _, (v, b, q, a) in enumerate(unlabeled_loader):
-          with torch.no_grad():
+      with torch.no_grad():
+        for _, (v, b, q, a) in enumerate(unlabeled_loader):
+            #with torch.no_grad():
             v = Variable(v).cuda()
             b = Variable(b).cuda()
             q = Variable(q).cuda()
             a = Variable(a).cuda()
     
-          pred_all,feat_v,feat_q = model(v, b, q, a)
-          prob_all = torch.nn.functional.softmax(pred_all,dim=1)
-          
-          ##entropy baseline
-          if args.method=='entropy':
+            pred_all,feat_v,feat_q = model(v, b, q, a)
+            prob_all = torch.nn.functional.softmax(pred_all,dim=1)
             
-            logprob = torch.nn.functional.log_softmax(pred_all,dim=1)
-            entropy = ((-1)*prob_all*logprob).sum(1)
-            uncertainty = torch.cat((uncertainty, entropy.data),0)
-    
-          ## multimodal baseline
-          elif args.method=='multimodal':
-            with torch.no_grad():
+            ##entropy baseline
+            if args.method=='entropy':
+              
+              logprob = torch.nn.functional.log_softmax(pred_all,dim=1)
+              entropy = ((-1)*prob_all*logprob).sum(1)
+              uncertainty = torch.cat((uncertainty, entropy.data),0)
+      
+            ## multimodal baseline
+            elif args.method=='multimodal':
+              #with torch.no_grad():
               feat_v = Variable(feat_v.data).cuda()
               feat_q = Variable(feat_q.data).cuda()
             
-            pred_v = model.classifier_V(feat_v)
-            pred_q = model.classifier_Q(feat_q)
-            
-            prob_v = torch.nn.functional.softmax(pred_v,dim=1)
-            prob_q = torch.nn.functional.softmax(pred_q,dim=1)
-            
-            #distance1  = KL_div(prob_all,prob_v)#----(1)
-            #distance1  = KL_div(prob_all,prob_q)#----(2)
-            #distance1  = (KL_div(prob_v,prob_q) + KL_div(prob_q,prob_v))/2#----(3_RE)
-            distance1  = (KL_div(prob_v,(prob_q+prob_v)/2) + KL_div(prob_q,(prob_q+prob_v)/2))/2#----(3_REAL)
-            #distance  = KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v)   #----(4)
-            #distance  = KL_div(prob_all,prob_v)-KL_div(prob_all,prob_q)  #----(5)
-            #distance1  = (-1)*torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6_RE)
-            #distance  = KL_div(prob_all,prob_v)*KL_div(prob_all,prob_q)   #----(1*2)
-            #distance  = KL_div(prob_all,prob_v)+KL_div(prob_all,prob_q)   #----(1+2)
-            #distance  = torch.max(KL_div(prob_all,prob_v),KL_div(prob_all,prob_q))   #----(max12)
-            
-            
-            entropy_all = ((-1)*prob_all*torch.nn.functional.log_softmax(pred_all,dim=1)).sum(1)
-            
-            entropy_v = ((-1)*prob_v*torch.nn.functional.log_softmax(pred_v,dim=1)).sum(1)
-            #distance1 = (entropy_all - entropy_v) #----------------------------------------------------(7)
-            
-            entropy_q = ((-1)*prob_q*torch.nn.functional.log_softmax(pred_q,dim=1)).sum(1)
-            #distance1 = (entropy_all - entropy_q)*(-1) #----------------------------------------------------(8_RE)
-            
-            #distance = torch.abs(entropy_v - entropy_q) #---------(9)
-            
-            
-            
-            distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
-            
-            
-            
-            #distance1 = entropy_v#------- entropy of V
-            #distance1 = entropy_q#------- entropy of Q
-            
-            
-            
-            
-            
-            #distance = entropy_all
-            distance = distance1+distance2
-            #distance = distance1+distance2+entropy_all * 10
-            #distance = distance1*distance2
-            #distance = distance1*distance2*entropy_all
-            #distance = torch.max(distance1,distance2)
-            
-            
-            
-            distance = (10-cycle) * entropy_v + cycle * distance  # Linear scheduling from multimodalV to other distance.
-            
-            
-            
-            uncertainty = torch.cat((uncertainty, distance.data),0)
-            #pdb.set_trace()
-          else:
-            pdb.set_trace()
+              pred_v = model.classifier_V(feat_v)
+              pred_q = model.classifier_Q(feat_q)
+              
+              prob_v = torch.nn.functional.softmax(pred_v,dim=1)
+              prob_q = torch.nn.functional.softmax(pred_q,dim=1)
+              
+              #distance1  = KL_div(prob_all,prob_v)#----(1)
+              #distance1  = KL_div(prob_all,prob_q)#----(2)
+              #distance1  = (KL_div(prob_v,prob_q) + KL_div(prob_q,prob_v))/2#----(3_RE)
+              distance1  = (KL_div(prob_v,(prob_q+prob_v)/2) + KL_div(prob_q,(prob_q+prob_v)/2))/2#----(3_REAL)
+              #distance  = KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v)   #----(4)
+              #distance  = KL_div(prob_all,prob_v)-KL_div(prob_all,prob_q)  #----(5)
+              #distance1  = (-1)*torch.abs(KL_div(prob_all,prob_q)-KL_div(prob_all,prob_v))   #----(6_RE)
+              #distance  = KL_div(prob_all,prob_v)*KL_div(prob_all,prob_q)   #----(1*2)
+              #distance  = KL_div(prob_all,prob_v)+KL_div(prob_all,prob_q)   #----(1+2)
+              #distance  = torch.max(KL_div(prob_all,prob_v),KL_div(prob_all,prob_q))   #----(max12)
+              
+              
+              entropy_all = ((-1)*prob_all*torch.nn.functional.log_softmax(pred_all,dim=1)).sum(1)
+              
+              entropy_v = ((-1)*prob_v*torch.nn.functional.log_softmax(pred_v,dim=1)).sum(1)
+              #distance1 = (entropy_all - entropy_v) #----------------------------------------------------(7)
+              
+              entropy_q = ((-1)*prob_q*torch.nn.functional.log_softmax(pred_q,dim=1)).sum(1)
+              #distance1 = (entropy_all - entropy_q)*(-1) #----------------------------------------------------(8_RE)
+              
+              #distance = torch.abs(entropy_v - entropy_q) #---------(9)
+              
+              
+              
+              distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
+              
+              
+              
+              #distance1 = entropy_v#------- entropy of V
+              #distance1 = entropy_q#------- entropy of Q
+              
+              
+              
+              
+              
+              #distance = entropy_all
+              distance = distance1+distance2
+              #distance = distance1+distance2+entropy_all * 10
+              #distance = distance1*distance2
+              #distance = distance1*distance2*entropy_all
+              #distance = torch.max(distance1,distance2)
+              
+              
+              
+              distance = (10-cycle) * entropy_v + cycle * distance  # Linear scheduling from multimodalV to other distance.
+              
+              
+              
+              uncertainty = torch.cat((uncertainty, distance.data),0)
+              #pdb.set_trace()
+            else:
+              pdb.set_trace()
     
     return uncertainty.cpu()
 

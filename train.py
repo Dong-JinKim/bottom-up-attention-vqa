@@ -487,8 +487,8 @@ def evaluate(model, dataloader):
           v = Variable(v).cuda()
           b = Variable(b).cuda()
           q = Variable(q).cuda()
-        pred,_,_ = model(v, b, q, None)
-        batch_score = compute_score_with_logits(pred, a.cuda()).sum()
+          pred,_,_ = model(v, b, q, None)
+          batch_score = compute_score_with_logits(pred, a.cuda()).sum()
         score += batch_score
         upper_bound += (a.max(1)[0]).sum()
         num_data += pred.size(0)
