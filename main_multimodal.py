@@ -33,7 +33,7 @@ class SubsetSequentialSampler():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs_first', type=int, default=20)
-    parser.add_argument('--epochs_active', type=int, default=10)#-----!!!
+    parser.add_argument('--epochs_active', type=int, default=20)#-----!!!
     parser.add_argument('--method', type=str, default='random',help='random / entropy / multimodal')#-----!!!
     parser.add_argument('--num_hid', type=int, default=1024)
     parser.add_argument('--model', type=str, default='multimodal_newatt')
@@ -57,10 +57,11 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
       uncertainty = torch.Tensor([]).cuda()
       #with torch.no_grad():
       for _, (v, b, q, a) in enumerate(unlabeled_loader):
-          v = Variable(v,volatile=True).cuda()
-          b = Variable(b,volatile=True).cuda()
-          q = Variable(q,volatile=True).cuda()
-          a = Variable(a,volatile=True).cuda()
+          with torch.no_grad():
+            v = Variable(v).cuda()
+            b = Variable(b).cuda()
+            q = Variable(q).cuda()
+            a = Variable(a).cuda()
     
           pred_all,feat_v,feat_q = model(v, b, q, a)
           prob_all = torch.nn.functional.softmax(pred_all,dim=1)
@@ -74,8 +75,9 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
     
           ## multimodal baseline
           elif args.method=='multimodal':
-            feat_v = Variable(feat_v.data,volatile=True).cuda()
-            feat_q = Variable(feat_q.data,volatile=True).cuda()
+            with torch.no_grad():
+              feat_v = Variable(feat_v.data).cuda()
+              feat_q = Variable(feat_q.data).cuda()
             
             pred_v = model.classifier_V(feat_v)
             pred_q = model.classifier_Q(feat_q)
@@ -107,11 +109,11 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
             
             
             
-            #distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
+            distance2 = entropy_all * 10 #----------------------want to add entropy as well?           
             
             
             
-            distance2 = entropy_v#------- entropy of V
+            #distance1 = entropy_v#------- entropy of V
             #distance1 = entropy_q#------- entropy of Q
             
             
@@ -119,8 +121,8 @@ def get_uncertainty(model, unlabeled_loader,SUBSET,cycle,args):#-------------!!!
             
             
             #distance = entropy_all
-            #distance = distance1+distance2
-            distance = distance1+distance2+entropy_all * 10
+            distance = distance1+distance2
+            #distance = distance1+distance2+entropy_all * 10
             #distance = distance1*distance2
             #distance = distance1*distance2*entropy_all
             #distance = torch.max(distance1,distance2)
@@ -152,10 +154,7 @@ if __name__ == '__main__':
     batch_size = args.batch_size    
     
     constructor = 'build_%s' % args.model
-    model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
-    model.w_emb.init_embedding('data/glove6b_init_300d.npy')
-    model = model.cuda()
-    #model = nn.DataParallel(model).cuda()
+    
     
     ############################################
     # Initialize a labeled dataset by randomly sampling K=ADDENDUM=1,000 data points from the entire dataset.
@@ -179,6 +178,11 @@ if __name__ == '__main__':
     for cycle in range(CYCLE): 
       print("##########CYCLE (%d/%d)###########"%(cycle,CYCLE))
       
+      model = getattr(base_model, constructor)(train_dset, args.num_hid).cuda()
+      model.w_emb.init_embedding('data/glove6b_init_300d.npy')
+      model = model.cuda()
+      #model = nn.DataParallel(model).cuda()
+    
       if cycle == 0:
         epochs = args.epochs_first
       else:
@@ -196,7 +200,9 @@ if __name__ == '__main__':
         subset = unlabeled_set[:SUBSET]
 
         # Create unlabeled dataloader for the unlabeled subset
-        unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=1,sampler=SubsetSequentialSampler(subset))
+        train_dset1 = torch.utils.data.Subset(train_dset,subset)#----------------!!!
+        unlabeled_loader =  DataLoader(train_dset1, batch_size*4, num_workers=1)#------!!!!
+        #unlabeled_loader =  DataLoader(train_dset, batch_size*4, num_workers=1,sampler=SubsetSequentialSampler(subset))
         
         # Measure uncertainty of each data points in the subset
         uncertainty = get_uncertainty(model, unlabeled_loader,len(subset),cycle,args)
