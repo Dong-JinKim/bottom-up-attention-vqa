@@ -42,7 +42,7 @@ def triplet_loss(teacher,student,target,margin=0):
     
     if CONTRASTIVE:    ## for contrasive loss
       student2 = Variable(student.data)
-      GG = torch.sigmoid(teacher)-torch.sigmoid(student2) # sigmoid(.) somhow works better than logsoftmax(.)
+      GG = torch.nn.functional.sigmoid(teacher)-torch.nn.functional.sigmoid(student2) # sigmoid(.) somhow works better than logsoftmax(.)
       
       loss = instance_bce_with_logits(GG, target)
       
@@ -75,12 +75,12 @@ def train(model, train_loader, eval_loader, num_epochs, output,cycle):
             pred,_ = model(v, b, q, a)
             loss = instance_bce_with_logits(pred, a)
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
             optim.step()
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
-            total_loss += loss.item() * v.size(0)
+            total_loss += loss.data[0] * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -113,7 +113,6 @@ def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loade
     
     USE_semi_supervised = False#-------!!!!!
     USE_triplet = True#-----!!!!
-
     for epoch in range(num_epochs):
         total_loss = 0
         train_score = 0
@@ -169,9 +168,9 @@ def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loade
             
             temperature_t = 1
             temperature_s = 1
-            teacher = Variable(torch.sigmoid(pred_all.data/temperature_t)).cuda()
+            teacher = Variable(torch.nn.functional.sigmoid(pred_all.data/temperature_t)).cuda()
             if USE_semi_supervised:
-              teacher_u = Variable(torch.sigmoid(pred_all_u.data/temperature_t)).cuda()
+              teacher_u = Variable(torch.nn.functional.sigmoid(pred_all_u.data/temperature_t)).cuda()
               loss_distillation = ( instance_bce_with_logits(pred_v/temperature_s, teacher) + instance_bce_with_logits(pred_q/temperature_s,teacher) + instance_bce_with_logits(pred_v_u/temperature_s, teacher_u) + instance_bce_with_logits(pred_q_u/temperature_s,teacher_u))/4 
             else:
               #loss_distillation = ( instance_bce_with_logits(pred_v/teacher, teacher) + instance_bce_with_logits(pred_q/teacher,teacher) )/2   
@@ -183,7 +182,7 @@ def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loade
             loss_D += 0.1* loss_distillation
               
             loss_D.backward()
-            ##nn.utils.clip_grad_norm_(DD.parameters(), 0.25)
+            ##nn.utils.clip_grad_norm(DD.parameters(), 0.25)
             optim_D.step()
             optim_D.zero_grad()
             ###################################################################################################################################
@@ -216,26 +215,23 @@ def train_multimodal_A(model,classifier_V,classifier_Q, train_loader, eval_loade
             
             #pdb.set_trace()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
             optim.step()
             optim.zero_grad()
             ###################################################################################################################################
             
             
             batch_score = compute_score_with_logits(pred_all, a.data).sum()
-            total_loss += loss.item() * v.size(0)
+            total_loss += loss.data[0] * v.size(0)
             train_score += batch_score
-
         total_loss /= len(train_loader.dataset)
         train_score = 100 * train_score / len(train_loader.dataset)
         model.train(False)
         eval_score, bound = evaluate(model, eval_loader)
         model.train(True)
-
         logger.write('epoch %d, time: %.2f' % (epoch, time.time()-t))
         logger.write('\ttrain_loss: %.2f, loss_D: %.2f, distillation loss: %.2f' % (total_loss,loss_D,loss_distillation))
         logger.write('\teval score: %.2f (%.2f)' % (100 * eval_score, 100 * bound))
-
         if eval_score > best_eval_score:
             model_path = os.path.join(output, 'model.pth')
             torch.save(model.state_dict(), model_path)
@@ -311,9 +307,9 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
             if USE_self_distillation:#----------!!!!!!
               temperature_t = 1
               temperature_s = 1
-              teacher = Variable(torch.sigmoid(pred_all.data/temperature_t)).cuda()
+              teacher = Variable(torch.nn.functional.sigmoid(pred_all.data/temperature_t)).cuda()
               if USE_semi_supervised:
-                teacher_u = Variable(torch.sigmoid(pred_all_u.data/temperature_t)).cuda()
+                teacher_u = Variable(torch.nn.functional.sigmoid(pred_all_u.data/temperature_t)).cuda()
                 loss_distillation = ( instance_bce_with_logits(pred_v/temperature_s, teacher) + instance_bce_with_logits(pred_q/temperature_s,teacher) + instance_bce_with_logits(pred_v_u/temperature_s, teacher_u) + instance_bce_with_logits(pred_q_u/temperature_s,teacher_u))/4 
               else:
                 #loss_distillation = ( instance_bce_with_logits(pred_v/teacher, teacher) + instance_bce_with_logits(pred_q/teacher,teacher) )/2   
@@ -330,12 +326,12 @@ def train_multimodal(model, train_loader, eval_loader, num_epochs, output,cycle)
               
             #pdb.set_trace()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
             optim.step()
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred_all, a.data).sum()
-            total_loss += loss.item() * v.size(0)
+            total_loss += loss.data[0] * v.size(0)
             train_score += batch_score
 
         total_loss /= len(train_loader.dataset)
@@ -399,7 +395,6 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
             b = Variable(b).cuda()
             q = Variable(q).cuda()
             a = Variable(a).cuda()
-
             pred,feat = model(v, b, q, a)#----!!!!
             
             v_u, b_u, q_u, a_u = next(iter(unlabeled_loader))#-----!!!!!!
@@ -443,14 +438,14 @@ def train_GAN(model, DD,  train_loader, unlabeled_loader, eval_loader, num_epoch
             ############################################################################################
             
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            nn.utils.clip_grad_norm(model.parameters(), 0.25)
             optim.step()
             optim.zero_grad()
 
             batch_score = compute_score_with_logits(pred, a.data).sum()
-            total_loss += loss.item() * v.size(0)
-            G_loss += GAN_loss_G.item() * v.size(0)#------!!!!!
-            D_loss += GAN_loss_D.item() * v.size(0)#------!!!!!
+            total_loss += loss.data[0] * v.size(0)
+            G_loss += GAN_loss_G.data[0] * v.size(0)#------!!!!!
+            D_loss += GAN_loss_D.data[0] * v.size(0)#------!!!!!
             
             train_score += batch_score
             
@@ -483,12 +478,11 @@ def evaluate(model, dataloader):
     upper_bound = 0
     num_data = 0
     for v, b, q, a in iter(dataloader):
-        with torch.no_grad():
-          v = Variable(v).cuda()
-          b = Variable(b).cuda()
-          q = Variable(q).cuda()
-          pred,_,_ = model(v, b, q, None)
-          batch_score = compute_score_with_logits(pred, a.cuda()).sum()
+        v = Variable(v, volatile=True).cuda()
+        b = Variable(b, volatile=True).cuda()
+        q = Variable(q, volatile=True).cuda()
+        pred,_,_ = model(v, b, q, None)
+        batch_score = compute_score_with_logits(pred, a.cuda()).sum()
         score += batch_score
         upper_bound += (a.max(1)[0]).sum()
         num_data += pred.size(0)
